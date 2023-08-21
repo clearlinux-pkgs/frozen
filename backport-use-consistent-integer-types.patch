@@ -1,0 +1,163 @@
+From 5af40b3f9e03116aa2de4d55b53b9629e5988480 Mon Sep 17 00:00:00 2001
+From: Justus Ranvier <justus@opentransactions.org>
+Date: Fri, 14 Apr 2023 17:24:06 -0500
+Subject: [PATCH] use consistent integer types
+
+All usages of uint64_t and size_t changed to std::uint64_t and std::size_t since the former versions may or may not exist in all environments
+---
+ include/frozen/bits/hash_string.h |  6 +++---
+ include/frozen/bits/pmh.h         | 24 +++++++++++++-----------
+ include/frozen/string.h           |  3 ++-
+ 3 files changed, 18 insertions(+), 15 deletions(-)
+
+diff --git a/include/frozen/bits/hash_string.h b/include/frozen/bits/hash_string.h
+index da8fc51..b2f7e90 100644
+--- a/include/frozen/bits/hash_string.h
++++ b/include/frozen/bits/hash_string.h
+@@ -9,7 +9,7 @@ template <typename String>
+ constexpr std::size_t hash_string(const String& value) {
+   std::size_t d = 5381;
+   for (const auto& c : value)
+-    d = d * 33 + static_cast<size_t>(c);
++    d = d * 33 + static_cast<std::size_t>(c);
+   return d;
+ }
+ 
+@@ -17,9 +17,9 @@ constexpr std::size_t hash_string(const String& value) {
+ // With the lowest bits removed, based on experimental setup.
+ template <typename String>
+ constexpr std::size_t hash_string(const String& value, std::size_t seed) {
+-  std::size_t d =  (0x811c9dc5 ^ seed) * static_cast<size_t>(0x01000193);
++  std::size_t d =  (0x811c9dc5 ^ seed) * static_cast<std::size_t>(0x01000193);
+   for (const auto& c : value)
+-    d = (d ^ static_cast<size_t>(c)) * static_cast<size_t>(0x01000193);
++    d = (d ^ static_cast<std::size_t>(c)) * static_cast<std::size_t>(0x01000193);
+   return d >> 8 ;
+ }
+ 
+diff --git a/include/frozen/bits/pmh.h b/include/frozen/bits/pmh.h
+index f7261f8..9f3dd18 100644
+--- a/include/frozen/bits/pmh.h
++++ b/include/frozen/bits/pmh.h
+@@ -28,6 +28,8 @@
+ #include "frozen/bits/basic_types.h"
+ 
+ #include <array>
++#include <cstddef>
++#include <cstdint>
+ #include <limits>
+ 
+ namespace frozen {
+@@ -48,7 +50,7 @@ struct bucket_size_compare {
+ // hash function.
+ // pmh_buckets represents the initial placement into buckets.
+ 
+-template <size_t M>
++template <std::size_t M>
+ struct pmh_buckets {
+   // Step 0: Bucket max is 2 * sqrt M
+   // TODO: Come up with justification for this, should it not be O(log M)?
+@@ -56,7 +58,7 @@ struct pmh_buckets {
+ 
+   using bucket_t = cvector<std::size_t, bucket_max>;
+   carray<bucket_t, M> buckets;
+-  uint64_t seed;
++  std::uint64_t seed;
+ 
+   // Represents a reference to a bucket. This is used because the buckets
+   // have to be sorted, but buckets are big, making it slower than sorting refs
+@@ -88,7 +90,7 @@ struct pmh_buckets {
+   }
+ };
+ 
+-template <size_t M, class Item, size_t N, class Hash, class Key, class PRG>
++template <std::size_t M, class Item, std::size_t N, class Hash, class Key, class PRG>
+ pmh_buckets<M> constexpr make_pmh_buckets(const carray<Item, N> & items,
+                                 Hash const & hash,
+                                 Key const & key,
+@@ -104,7 +106,7 @@ pmh_buckets<M> constexpr make_pmh_buckets(const carray<Item, N> & items,
+     result.seed = prg();
+     rejected = false;
+     for (std::size_t i = 0; i < N; ++i) {
+-      auto & bucket = result.buckets[hash(key(items[i]), static_cast<size_t>(result.seed)) % M];
++      auto & bucket = result.buckets[hash(key(items[i]), static_cast<std::size_t>(result.seed)) % M];
+       if (bucket.size() >= result_t::bucket_max) {
+         rejected = true;
+         break;
+@@ -116,7 +118,7 @@ pmh_buckets<M> constexpr make_pmh_buckets(const carray<Item, N> & items,
+ }
+ 
+ // Check if an item appears in a cvector
+-template<class T, size_t N>
++template<class T, std::size_t N>
+ constexpr bool all_different_from(cvector<T, N> & data, T & a) {
+   for (std::size_t i = 0; i < data.size(); ++i)
+     if (data[i] == a)
+@@ -128,7 +130,7 @@ constexpr bool all_different_from(cvector<T, N> & data, T & a) {
+ // Represents either an index to a data item array, or a seed to be used with
+ // a hasher. Seed must have high bit of 1, value has high bit of zero.
+ struct seed_or_index {
+-  using value_type = uint64_t;
++  using value_type = std::uint64_t;
+ 
+ private:
+   static constexpr value_type MINUS_ONE = std::numeric_limits<value_type>::max();
+@@ -151,7 +153,7 @@ struct seed_or_index {
+ // Represents the perfect hash function created by pmh algorithm
+ template <std::size_t M, class Hasher>
+ struct pmh_tables {
+-  uint64_t first_seed_;
++  std::uint64_t first_seed_;
+   carray<seed_or_index, M> first_table_;
+   carray<std::size_t, M> second_table_;
+   Hasher hash_;
+@@ -165,8 +167,8 @@ struct pmh_tables {
+   // Always returns a valid index, must use KeyEqual test after to confirm.
+   template <typename KeyType, typename HasherType>
+   constexpr std::size_t lookup(const KeyType & key, const HasherType& hasher) const {
+-    auto const d = first_table_[hasher(key, static_cast<size_t>(first_seed_)) % M];
+-    if (!d.is_seed()) { return static_cast<std::size_t>(d.value()); } // this is narrowing uint64 -> size_t but should be fine
++    auto const d = first_table_[hasher(key, static_cast<std::size_t>(first_seed_)) % M];
++    if (!d.is_seed()) { return static_cast<std::size_t>(d.value()); } // this is narrowing std::uint64 -> std::size_t but should be fine
+     else { return second_table_[hasher(key, static_cast<std::size_t>(d.value())) % M]; }
+   }
+ };
+@@ -199,7 +201,7 @@ pmh_tables<M, Hash> constexpr make_pmh_tables(const carray<Item, N> &
+     if (bsize == 1) {
+       // Store index to the (single) item in G
+       // assert(bucket.hash == hash(key(items[bucket[0]]), step_one.seed) % M);
+-      G[bucket.hash] = {false, static_cast<uint64_t>(bucket[0])};
++      G[bucket.hash] = {false, static_cast<std::uint64_t>(bucket[0])};
+     } else if (bsize > 1) {
+ 
+       // Repeatedly try different H of d until we find a hash function
+@@ -208,7 +210,7 @@ pmh_tables<M, Hash> constexpr make_pmh_tables(const carray<Item, N> &
+       cvector<std::size_t, decltype(step_one)::bucket_max> bucket_slots;
+ 
+       while (bucket_slots.size() < bsize) {
+-        auto slot = hash(key(items[bucket[bucket_slots.size()]]), static_cast<size_t>(d.value())) % M;
++        auto slot = hash(key(items[bucket[bucket_slots.size()]]), static_cast<std::size_t>(d.value())) % M;
+ 
+         if (H[slot] != UNUSED || !all_different_from(bucket_slots, slot)) {
+           bucket_slots.clear();
+diff --git a/include/frozen/string.h b/include/frozen/string.h
+index 9274406..3e45307 100644
+--- a/include/frozen/string.h
++++ b/include/frozen/string.h
+@@ -28,6 +28,7 @@
+ #include "frozen/bits/version.h"
+ #include "frozen/bits/defines.h"
+ 
++#include <cstddef>
+ #include <functional>
+ 
+ #ifdef FROZEN_LETITGO_HAS_STRING_VIEW
+@@ -138,7 +139,7 @@ constexpr u8string operator"" _s(const char8_t *data, std::size_t size) {
+ 
+ namespace std {
+ template <typename _CharT> struct hash<frozen::basic_string<_CharT>> {
+-  size_t operator()(frozen::basic_string<_CharT> s) const {
++  std::size_t operator()(frozen::basic_string<_CharT> s) const {
+     return frozen::elsa<frozen::basic_string<_CharT>>{}(s);
+   }
+ };
